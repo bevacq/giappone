@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Giappone – Idee e voti</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#faf7f2;--card:#fff;--text:#222;--muted:#777;--line:#e6e0d6;--accent:#c0392b;--up:#2e8b57;--down:#c0392b}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b1a19;--card:#262524;--text:#eee;--muted:#9a9a9a;--line:#3a3836;--accent:#e8675a;--up:#4fc98a;--down:#e8675a}}
+:root[data-theme="dark"]{--bg:#1b1a19;--card:#262524;--text:#eee;--muted:#9a9a9a;--line:#3a3836;--accent:#e8675a;--up:#4fc98a;--down:#e8675a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,"Segoe UI",sans-serif;max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 12px}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px}
+.tab{border:1px solid var(--line);background:var(--card);color:var(--text);padding:8px 14px;border-radius:20px;font-size:14px;white-space:nowrap}
+.tab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.form{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:16px;display:grid;gap:8px}
+input,select,textarea{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px;width:100%}
+.btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px;font-size:15px;font-weight:600}
+h2{font-size:16px;margin:18px 0 8px;color:var(--accent)}
+.idea{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px}
+.idea b{display:block;font-size:16px}
+.note{color:var(--muted);font-size:13px;margin:4px 0;overflow-wrap:anywhere}
+.row{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.v{border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:8px;padding:7px 12px;font-size:15px}
+.v.up.on{background:var(--up);color:#fff;border-color:var(--up)}
+.v.down.on{background:var(--down);color:#fff;border-color:var(--down)}
+.score{margin-left:auto;font-weight:700}
+.del{background:none;border:0;color:var(--muted);font-size:12px}
+.msg{color:var(--muted);text-align:center;padding:20px}
+</style>
+</head>
+<body>
+<h1>🇯🇵 Giappone – cosa facciamo?</h1>
+<div class="tabs" id="tabs"></div>
+<div class="form" id="form" hidden>
+  <input id="t" placeholder="Attività (es. TeamLab Planets)" maxlength="80">
+  <select id="c"><option>Tokyo</option><option>Osaka</option><option>Kyoto</option></select>
+  <textarea id="n" rows="2" placeholder="Note o link (facoltativo)" maxlength="300"></textarea>
+  <button class="btn" id="add">Aggiungi idea</button>
+</div>
+<div id="list"><div class="msg">Caricamento…</div></div>
+<script>
+const CITIES=["Tokyo","Osaka","Kyoto"];
+let db,user,me=null,ideas=[],votes=[],filter="Tutte",names={},canWrite=true;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function tabs(){
+  $("tabs").innerHTML=["Tutte",...CITIES].map(c=>`<button class="tab ${c===filter?"on":""}" data-c="${c}">${c}</button>`).join("");
+  $("tabs").querySelectorAll(".tab").forEach(b=>b.onclick=()=>{filter=b.dataset.c;tabs();render();});
+}
+function score(id){let s=0;votes.forEach(v=>{if(v.ideaId===id)s+=v.v});return s}
+function myVote(id){const v=votes.find(v=>v.ideaId===id&&v.uid===me);return v?v.v:0}
+function count(id,val){return votes.filter(v=>v.ideaId===id&&v.v===val).length}
+
+function render(){
+  const cs=filter==="Tutte"?CITIES:[filter];
+  let html="";
+  for(const c of cs){
+    const list=ideas.filter(i=>i.city===c).sort((a,b)=>score(b.id)-score(a.id)||a.createdAt-b.createdAt);
+    html+=`<h2>${c} (${list.length})</h2>`;
+    if(!list.length)html+=`<div class="msg">Nessuna idea ancora</div>`;
+    for(const i of list){
+      const mv=myVote(i.id),sc=score(i.id);
+      html+=`<div class="idea"><b>${esc(i.title)}</b>
+      ${i.note?`<div class="note">${esc(i.note)}</div>`:""}
+      <div class="note">Proposta da ${esc(names[i.by]||"qualcuno")}</div>
+      <div class="row">
+        <button class="v up ${mv===1?"on":""}" data-id="${i.id}" data-v="1" ${canWrite?"":"disabled"}>👍 ${count(i.id,1)}</button>
+        <button class="v down ${mv===-1?"on":""}" data-id="${i.id}" data-v="-1" ${canWrite?"":"disabled"}>👎 ${count(i.id,-1)}</button>
+        <span class="score">${sc>0?"+":""}${sc}</span>
+        ${i.by===me?`<button class="del" data-del="${i.id}">elimina</button>`:""}
+      </div></div>`;
+    }
+  }
+  $("list").innerHTML=html;
+  $("list").querySelectorAll(".v").forEach(b=>b.onclick=()=>vote(b.dataset.id,+b.dataset.v));
+  $("list").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>delIdea(b.dataset.del));
+}
+
+async function vote(id,val){
+  if(!me)return;
+  const ref=db.collection("votes").doc(id+"__"+me);
+  try{
+    if(myVote(id)===val)await ref.delete();
+    else await ref.set({ideaId:id,uid:me,v:val});
+  }catch(e){console.error(e)}
+}
+async function delIdea(id){
+  if(!confirm("Eliminare questa idea?"))return;
+  try{
+    await db.collection("ideas").doc(id).delete();
+    for(const v of votes.filter(v=>v.ideaId===id))await db.collection("votes").doc(id+"__"+v.uid).delete();
+  }catch(e){console.error(e)}
+}
+async function resolveNames(){
+  const ids=[...new Set([...ideas.map(i=>i.by)].filter(Boolean))];
+  if(!ids.length||!user)return;
+  try{const p=await user.profiles(ids);ids.forEach(id=>{names[id]=(p[id]&&p[id].isMe?"te":(p[id]&&p[id].name))||""});render();}catch(e){}
+}
+
+async function init(){
+  tabs();
+  try{user=await claude.use("user");db=await claude.use("db");}catch(e){}
+  if(!db){$("list").innerHTML='<div class="msg">Accedi per usare la pagina.</div>';return;}
+  try{me=user?await user.id():null;}catch(e){}
+  try{const w=user?await user.can("data.write"):null;canWrite=w!==false&&!!me;}catch(e){}
+  if(canWrite)$("form").hidden=false;
+  db.collection("ideas").onSnapshot(s=>{
+    ideas=s.docs.map(d=>({id:d.id,...d.data()}));render();resolveNames();
+  },e=>{$("list").innerHTML='<div class="msg">Dati non disponibili.</div>'});
+  db.collection("votes").onSnapshot(s=>{votes=s.docs.map(d=>d.data());render();},()=>{});
+  $("add").onclick=async()=>{
+    const title=$("t").value.trim();if(!title||!me)return;
+    const btn=$("add");btn.disabled=true;
+    try{
+      await db.collection("ideas").add({title,city:$("c").value,note:$("n").value.trim(),by:me,createdAt:Date.now()});
+      $("t").value="";$("n").value="";
+    }catch(e){alert("Non riesco a salvare: potresti non avere i permessi di scrittura.")}
+    btn.disabled=false;
+  };
+}
+init();
+</script>
+</body>
+</html>
