@@ -123,7 +123,8 @@ async function vote(id, val) {
   } catch (e) { console.error(e); }
 }
 async function delIdea(id) {
-  if (!confirm("Eliminare questa idea?")) return;
+    const t = (ideas.find(i => i.id === id) || {}).title || "questa idea";
+  if (!confirm("⚠️ Stai per eliminare «" + t + "» per tutti, voti compresi. Non si può annullare. Confermi?")) return;
   try {
     await deleteDoc(doc(db, "ideas", id));
     for (const v of votes.filter(v => v.ideaId === id)) await deleteDoc(doc(db, "votes", id + "__" + v.uid));
